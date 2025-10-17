@@ -276,165 +276,211 @@
 
         function renderNews() {
             const newsSection = document.getElementById('newsSection');
-            newsSection.innerHTML = '<div style="margin-top:48px;color:#fff;font-size:1.3em;font-weight:bold;">Top News</div>';
+            // Add refresh icon after "Top News"
+            newsSection.innerHTML = `
+                <div style="margin-top:48px;color:#fff;font-size:1.3em;font-weight:bold;display:flex;align-items:center;gap:12px;">
+                    Top News
+                    <span id="newsRefreshIcon" style="cursor:pointer;display:inline-flex;align-items:center;">
+                        <svg id="newsRefreshSvg" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="gray"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+                    </span>
+                </div>
+            `;
 
-            let cached = null;
-            try {
-                cached = JSON.parse(localStorage.getItem(NEWS_STORAGE_KEY));
-            } catch {}
-            let useCache = false;
-            if (cached && cached.fetchedAt) {
-                const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
-                const twoHours = 2 * 60 * 60 * 1000;
-                if (ageMs < twoHours && cached.articles && cached.articles.length > 0) {
-                    useCache = true;
-                }
+            const refreshIcon = document.getElementById('newsRefreshIcon');
+            const refreshSvg = document.getElementById('newsRefreshSvg');
+            let isFetching = false;
+
+
+
+            function setSpinning(spin) {
+                refreshSvg.style.animation = spin
+                    ? "spin 1s linear infinite"
+                    : "";
             }
 
-            function renderArticles(articles) {
-                const container = document.createElement('div');
-                container.style.display = 'flex';
-                container.style.flexDirection = 'column';
-                container.style.gap = '18px';
-                container.style.marginTop = '18px';
-                container.style.width = '60vw';
-                container.style.maxWidth = '900px';
-                container.style.marginLeft = 'auto';
-                container.style.marginRight = 'auto';
 
-                function formatAge(publishedAt) {
-                    if (!publishedAt) return '';
-                    const pubDate = new Date(publishedAt);
-                    const now = new Date();
-                    const diffMs = now - pubDate;
-                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                    const diffMins = Math.floor(diffMs / (1000 * 60));
-                    let display = '';
-                    if (diffMs < 0) {
-                        display = 'just now';
-                    } else if (diffHours < 1) {
-                        display = `${diffMins} min${diffMins !== 1 ? 's' : ''}`;
-                    } else if (diffHours < 24) {
-                        display = `${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
-                    } else if (diffDays < 2) {
-                        const hours = diffHours % 24;
-                        display = `${diffDays} day${diffDays !== 1 ? 's' : ''}` +
-                            (hours > 0 ? ` ${hours} hour${hours !== 1 ? 's' : ''}` : '');
-                    } else {
-                        // e.g. Monday, October 13 2025
-                        display = pubDate.toLocaleDateString(undefined, {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                        });
+
+            // Add spin animation CSS
+            if (!document.getElementById('spin-style')) {
+                const style = document.createElement('style');
+                style.id = 'spin-style';
+                style.textContent = `
+                    @keyframes spin {
+                        100% { transform: rotate(-360deg); }
                     }
-                    // Tooltip always shows full date/time
-                    const tooltip = pubDate.toLocaleString();
-                    return { display, tooltip };
+                `;
+                document.head.appendChild(style);
+            }
+
+            refreshIcon.onclick = () => {
+                localStorage.removeItem(NEWS_STORAGE_KEY);
+                setSpinning(true);
+                fetchAndRenderNews(true);
+            };
+
+            function fetchAndRenderNews(forceFetch = false) {
+                let cached = null;
+                try {
+                    cached = JSON.parse(localStorage.getItem(NEWS_STORAGE_KEY));
+                } catch {}
+                let useCache = false;
+                if (!forceFetch && cached && cached.fetchedAt) {
+                    const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
+                    const twoHours = 2 * 60 * 60 * 1000;
+                    if (ageMs < twoHours && cached.articles && cached.articles.length > 0) {
+                        useCache = true;
+                    }
                 }
 
-                articles.forEach(article => {
-                    // Make the entire row a clickable link
-                    const rowLink = document.createElement('a');
-                    rowLink.href = article.url || '#';
-                    rowLink.style.display = 'flex';
-                    rowLink.style.alignItems = 'flex-start';
-                    rowLink.style.background = '#181818';
-                    rowLink.style.borderRadius = '10px';
-                    rowLink.style.padding = '12px 16px';
-                    rowLink.style.gap = '18px';
-                    rowLink.style.boxShadow = '0 2px 8px #0006';
-                    rowLink.style.textDecoration = 'none';
+                function renderArticles(articles) {
+                    setSpinning(false);
+                    const container = document.createElement('div');
+                    container.style.display = 'flex';
+                    container.style.flexDirection = 'column';
+                    container.style.gap = '18px';
+                    container.style.marginTop = '18px';
+                    container.style.width = '60vw';
+                    container.style.maxWidth = '900px';
+                    container.style.marginLeft = 'auto';
+                    container.style.marginRight = 'auto';
 
-                    const img = document.createElement('img');
-                    img.src = article.urlToImage || '';
-                    img.style.width = '256px';
-                    img.style.objectFit = 'cover';
-                    img.style.borderRadius = '8px';
-                    img.style.background = '#222';
-                    img.style.margin = 'auto';
-                    img.onerror = () => { img.style.display = 'none'; };
+                    function formatAge(publishedAt) {
+                        if (!publishedAt) return '';
+                        const pubDate = new Date(publishedAt);
+                        const now = new Date();
+                        const diffMs = now - pubDate;
+                        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                        const diffMins = Math.floor(diffMs / (1000 * 60));
+                        let display = '';
+                        if (diffMs < 0) {
+                            display = 'just now';
+                        } else if (diffHours < 1) {
+                            display = `${diffMins} min${diffMins !== 1 ? 's' : ''}`;
+                        } else if (diffHours < 24) {
+                            display = `${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+                        } else if (diffDays < 2) {
+                            const hours = diffHours % 24;
+                            display = `${diffDays} day${diffDays !== 1 ? 's' : ''}` +
+                                (hours > 0 ? ` ${hours} hour${hours !== 1 ? 's' : ''}` : '');
+                        } else {
+                            display = pubDate.toLocaleDateString(undefined, {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            });
+                        }
+                        const tooltip = pubDate.toLocaleString();
+                        return { display, tooltip };
+                    }
 
-                    const info = document.createElement('div');
-                    info.style.display = 'flex';
-                    info.style.flexDirection = 'column';
-                    info.style.justifyContent = 'flex-start';
-                    info.style.flex = '1';
+                    articles.forEach(article => {
+                        const rowLink = document.createElement('a');
+                        rowLink.href = article.url || '#';
+                        rowLink.style.display = 'flex';
+                        rowLink.style.alignItems = 'flex-start';
+                        rowLink.style.background = '#181818';
+                        rowLink.style.borderRadius = '10px';
+                        rowLink.style.padding = '12px 16px';
+                        rowLink.style.gap = '18px';
+                        rowLink.style.boxShadow = '0 2px 8px #0006';
+                        rowLink.style.textDecoration = 'none';
 
-                    const title = document.createElement('div');
-                    let titleTokens = (article.title || '').split('-');
-                    titleTokens.pop();
-                    title.textContent = titleTokens.join('-').trim();
-                    title.style.color = '#fff';
-                    title.style.fontSize = '1.2em';
-                    title.style.padding = '12px';
+                        const img = document.createElement('img');
+                        img.src = article.urlToImage || '';
+                        img.style.width = '256px';
+                        img.style.objectFit = 'cover';
+                        img.style.borderRadius = '8px';
+                        img.style.background = '#222';
+                        img.style.margin = 'auto';
+                        img.onerror = () => { img.style.display = 'none'; };
 
-                    const desc = document.createElement('div');
-                    desc.textContent = article.description || '';
-                    desc.style.color = '#ccc';
-                    desc.style.fontSize = '0.95em';
-                    desc.style.marginBottom = '4px';
-                    desc.style.padding = '12px';
+                        const info = document.createElement('div');
+                        info.style.display = 'flex';
+                        info.style.flexDirection = 'column';
+                        info.style.justifyContent = 'flex-start';
+                        info.style.flex = '1';
 
-                    const source = document.createElement('div');
-                    source.style.display = 'inline';
-                    source.style.color = '#aaa';
-                    source.style.fontSize = '0.85em';
-                    source.style.padding = '4px 12px 0 12px';
+                        const title = document.createElement('div');
+                        let titleTokens = (article.title || '').split('-');
+                        titleTokens.pop();
+                        title.textContent = titleTokens.join('-').trim();
+                        title.style.color = '#fff';
+                        title.style.fontSize = '1.2em';
+                        title.style.padding = '12px';
 
-                    // Age formatting
-                    const { display: ageDisplay, tooltip: ageTooltip } = formatAge(article.publishedAt);
-                    source.textContent = article.source && article.source.name ? article.source.name : '';
+                        const desc = document.createElement('div');
+                        desc.textContent = article.description || '';
+                        desc.style.color = '#ccc';
+                        desc.style.fontSize = '0.95em';
+                        desc.style.marginBottom = '4px';
+                        desc.style.padding = '12px';
 
-                    // Age span
-                    const ageSpan = document.createElement('span');
-                    ageSpan.textContent = ageDisplay ? ` - ${ageDisplay}` : '';
-                    ageSpan.title = ageTooltip;
-                    ageSpan.style.color = '#666';
-                    ageSpan.style.marginLeft = '2px';
+                        const source = document.createElement('div');
+                        source.style.display = 'inline';
+                        source.style.color = '#aaa';
+                        source.style.fontSize = '0.85em';
+                        source.style.padding = '4px 12px 0 12px';
 
-                    source.appendChild(ageSpan);
+                        const { display: ageDisplay, tooltip: ageTooltip } = formatAge(article.publishedAt);
+                        source.textContent = article.source && article.source.name ? article.source.name : '';
 
-                    info.appendChild(title);
-                    info.appendChild(desc);
-                    info.appendChild(source);
+                        const ageSpan = document.createElement('span');
+                        ageSpan.textContent = ageDisplay ? ` - ${ageDisplay}` : '';
+                        ageSpan.title = ageTooltip;
+                        ageSpan.style.color = '#444';
+                        ageSpan.style.marginLeft = '2px';
 
-                    rowLink.appendChild(img);
-                    rowLink.appendChild(info);
+                        source.appendChild(ageSpan);
 
-                    container.appendChild(rowLink);
-                });
+                        info.appendChild(title);
+                        info.appendChild(desc);
+                        info.appendChild(source);
 
-                newsSection.appendChild(container);
-            }
+                        rowLink.appendChild(img);
+                        rowLink.appendChild(info);
 
-            // If there's no API key, show message and skip fetch
-            if (!NEWS_API_KEY) {
-                newsSection.innerHTML += '<div style="color:#a00;margin-top:12px;">No NewsAPI.org key set. Please set "newsApiKey" in localStorage.</div>';
-                return;
-            }
-
-            if (useCache) {
-                renderArticles(cached.articles);
-            } else {
-                // Use a CORS proxy to avoid 426/403 errors in browser fetch
-                const proxiedUrl = 'https://corsproxy.io/?' + encodeURIComponent(NEWS_API_URL);
-                fetch(proxiedUrl)
-                    .then(response => response.json())
-                    .then(data => {
-                        let storage = {
-                            articles: data.articles || [],
-                            fetchedAt: new Date().toISOString()
-                        };
-                        localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify(storage));
-                        renderArticles(storage.articles);
-                    })
-                    .catch(error => {
-                        newsSection.innerHTML += '<div style="color:#a00;">Error fetching news.</div>';
+                        container.appendChild(rowLink);
                     });
+
+                    // Remove previous articles if any
+                    while (newsSection.children.length > 1) {
+                        newsSection.removeChild(newsSection.lastChild);
+                    }
+                    newsSection.appendChild(container);
+                }
+
+                // If there's no API key, show message and skip fetch
+                if (!NEWS_API_KEY) {
+                    setSpinning(false);
+                    newsSection.innerHTML += '<div style="color:#a00;margin-top:12px;">No NewsAPI.org key set. Please set "newsApiKey" in localStorage.</div>';
+                    return;
+                }
+
+                if (useCache) {
+                    renderArticles(cached.articles);
+                } else {
+                    setSpinning(true);
+                    const proxiedUrl = 'https://corsproxy.io/?' + encodeURIComponent(NEWS_API_URL);
+                    fetch(proxiedUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            let storage = {
+                                articles: data.articles || [],
+                                fetchedAt: new Date().toISOString()
+                            };
+                            localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify(storage));
+                            renderArticles(storage.articles);
+                        })
+                        .catch(error => {
+                            setSpinning(false);
+                            newsSection.innerHTML += '<div style="color:#a00;">Error fetching news.</div>';
+                        });
+                }
             }
+
+            fetchAndRenderNews();
         }
 
         // --- Modal Logic ---
