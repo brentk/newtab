@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>New Tab</title>
+
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            margin: 0;
+            font-family: Helvetica, sans-serif;
+            min-height: 100vh;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        #favoritesGrid {
+            padding-top: 64px;
+            padding-bottom: 64px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 32px;
+            margin-top: 48px;
+        }
+        .cell {
+            background: #111;
+            border-radius: 12px;
+            padding: 16px 12px 12px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            width: 128px;
+        }
+        .cell:hover {
+            background: #181818;
+        }
+        .cell.drag-over {
+            background: #222 !important;
+            outline: 2px dashed #fff;
+        }
+        .cell.dragging {
+            opacity: 0.5;
+        }
+
+        .favicon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: #222;
+            object-fit: contain;
+            margin-bottom: 12px;
+        }
+        .site-name {
+            color: #fff;
+            font-size: 0.8em;
+            text-align: center;
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+        .edit-icon {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            opacity: 0.7;
+        }
+        .edit-icon:hover {
+            opacity: 1;
+        }
+        .add-btn {
+            position: fixed;
+            top: 24px;
+            right: 32px;
+            background: #222;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            font-size: 2em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px #0008;
+        }
+        .modal-bg {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #000a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal {
+            background: #222;
+            padding: 32px 24px 24px 24px;
+            border-radius: 16px;
+            min-width: 320px;
+            color: #fff;
+            box-shadow: 0 4px 24px #000c;
+        }
+        .modal label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 1em;
+        }
+        .modal input {
+            width: 95%;
+            padding: 8px;
+            margin-bottom: 18px;
+            border-radius: 6px;
+            border: none;
+            background: #333;
+            color: #fff;
+            font-size: 1em;
+        }
+        .modal .actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .modal button {
+            background: #444;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 18px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        .modal button:hover {
+            background: #666;
+        }
+    </style>
+</head>
+<body>
+    <button class="add-btn" title="Add site" id="addSiteBtn">+</button>
+    <div class="container">
+        <div class="grid" id="favoritesGrid"></div>
+        <div id="newsSection"></div>
+    </div>
+    <div id="modalRoot"></div>
+    <script>
+
+        // --- Data Model ---
+        const SITES_STORAGE_KEY = 'favoriteSites';
+        const NEWS_STORAGE_KEY  = 'newsArticles';
+        const NEWS_API_KEY      = localStorage.getItem('newsApiKey') || '';
+        const NEWS_API_URL      = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWS_API_KEY}`;
+
+        function loadSites() {
+            try {
+                return JSON.parse(localStorage.getItem(SITES_STORAGE_KEY)) || [];
+            } catch {
+                return [];
+            }
+        }
+        function saveSites(sites) {
+            localStorage.setItem(SITES_STORAGE_KEY, JSON.stringify(sites));
+        }
+
+        // --- Favicon Fetch ---
+        function getFaviconUrl(siteUrl) {
+            try {
+                const url = new URL(siteUrl);
+                return `https://icons.duckduckgo.com/ip3/${url.host}.ico`;
+            } catch {
+                return '';
+            }
+        }
+
+        // --- Render Grid ---
+        async function renderGrid() {
+            const grid = document.getElementById('favoritesGrid');
+            grid.innerHTML = '';
+            const sites = loadSites();
+            for (let i = 0; i < sites.length; i++) {
+                const site = sites[i];
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.title = site.url;
+                cell.draggable = true;
+                cell.dataset.index = i;
+
+                // Drag state tracking
+                let dragStarted = false;
+
+                // Drag events for reordering
+                cell.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', i);
+                    cell.classList.add('dragging');
+                    dragStarted = true;
+                });
+                cell.addEventListener('dragend', () => {
+                    cell.classList.remove('dragging');
+                    dragStarted = false;
+                });
+
+                cell.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    cell.classList.add('drag-over');
+                });
+                cell.addEventListener('dragleave', () => {
+                    cell.classList.remove('drag-over');
+                });
+                cell.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    cell.classList.remove('drag-over');
+                    const fromIndex = Number(e.dataTransfer.getData('text/plain'));
+                    const toIndex = Number(cell.dataset.index);
+                    if (fromIndex === toIndex) return;
+                    const sites = loadSites();
+                    const [moved] = sites.splice(fromIndex, 1);
+                    sites.splice(toIndex, 0, moved);
+                    saveSites(sites);
+                    renderGrid();
+                });
+
+                // Link wraps favicon and site name
+                const link = document.createElement('a');
+                link.rel = 'noopener noreferrer';
+                link.style.display = 'flex';
+                link.style.flexDirection = 'column';
+                link.style.alignItems = 'center';
+                link.style.width = '100%';
+                link.style.textDecoration = 'none';
+                link.href = site.url;
+
+                // Only allow navigation if not dragging
+                link.addEventListener('click', function(e) {
+                    // If a drag was started, prevent navigation
+                    if (dragStarted) {
+                        e.preventDefault();
+                        dragStarted = false;
+                    }
+                });
+
+                const favicon = document.createElement('img');
+                favicon.className = 'favicon';
+                favicon.src = site.favicon;
+                favicon.onerror = () => {
+                    favicon.src = getFaviconUrl(site.url);
+                };
+                link.appendChild(favicon);
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'site-name';
+                nameDiv.textContent = site.name;
+                link.appendChild(nameDiv);
+
+                cell.appendChild(link);
+
+                // Edit Icon (outside link)
+                const editIcon = document.createElement('img');
+                editIcon.className = 'edit-icon';
+                editIcon.src = 'data:image/svg+xml;utf8,<svg width="22" height="22" viewBox="0 0 24 24" fill="gray" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+                editIcon.title = 'Edit';
+                editIcon.onclick = () => openEditModal(i, site);
+                cell.appendChild(editIcon);
+
+                grid.appendChild(cell);
+            }
+        }
+
+        function renderNews() {
+            const newsSection = document.getElementById('newsSection');
+            newsSection.innerHTML = '<div style="margin-top:48px;color:#fff;font-size:1.3em;font-weight:bold;">Top News</div>';
+
+            let cached = null;
+            try {
+                cached = JSON.parse(localStorage.getItem(NEWS_STORAGE_KEY));
+            } catch {}
+            let useCache = false;
+            if (cached && cached.fetchedAt) {
+                const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
+                const twoHours = 2 * 60 * 60 * 1000;
+                if (ageMs < twoHours && cached.articles && cached.articles.length > 0) {
+                    useCache = true;
+                }
+            }
+
+            function renderArticles(articles) {
+                const container = document.createElement('div');
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';
+                container.style.gap = '18px';
+                container.style.marginTop = '18px';
+                container.style.width = '60vw';
+                container.style.maxWidth = '900px';
+                container.style.marginLeft = 'auto';
+                container.style.marginRight = 'auto';
+
+                function formatAge(publishedAt) {
+                    if (!publishedAt) return '';
+                    const pubDate = new Date(publishedAt);
+                    const now = new Date();
+                    const diffMs = now - pubDate;
+                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    const diffMins = Math.floor(diffMs / (1000 * 60));
+                    let display = '';
+                    if (diffMs < 0) {
+                        display = 'just now';
+                    } else if (diffHours < 1) {
+                        display = `${diffMins} min${diffMins !== 1 ? 's' : ''}`;
+                    } else if (diffHours < 24) {
+                        display = `${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+                    } else if (diffDays < 2) {
+                        const hours = diffHours % 24;
+                        display = `${diffDays} day${diffDays !== 1 ? 's' : ''}` +
+                            (hours > 0 ? ` ${hours} hour${hours !== 1 ? 's' : ''}` : '');
+                    } else {
+                        // e.g. Monday, October 13 2025
+                        display = pubDate.toLocaleDateString(undefined, {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                        });
+                    }
+                    // Tooltip always shows full date/time
+                    const tooltip = pubDate.toLocaleString();
+                    return { display, tooltip };
+                }
+
+                articles.forEach(article => {
+                    // Make the entire row a clickable link
+                    const rowLink = document.createElement('a');
+                    rowLink.href = article.url || '#';
+                    rowLink.style.display = 'flex';
+                    rowLink.style.alignItems = 'flex-start';
+                    rowLink.style.background = '#181818';
+                    rowLink.style.borderRadius = '10px';
+                    rowLink.style.padding = '12px 16px';
+                    rowLink.style.gap = '18px';
+                    rowLink.style.boxShadow = '0 2px 8px #0006';
+                    rowLink.style.textDecoration = 'none';
+
+                    const img = document.createElement('img');
+                    img.src = article.urlToImage || '';
+                    img.style.width = '256px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '8px';
+                    img.style.background = '#222';
+                    img.style.margin = 'auto';
+                    img.onerror = () => { img.style.display = 'none'; };
+
+                    const info = document.createElement('div');
+                    info.style.display = 'flex';
+                    info.style.flexDirection = 'column';
+                    info.style.justifyContent = 'flex-start';
+                    info.style.flex = '1';
+
+                    const title = document.createElement('div');
+                    let titleTokens = (article.title || '').split('-');
+                    titleTokens.pop();
+                    title.textContent = titleTokens.join('-').trim();
+                    title.style.color = '#fff';
+                    title.style.fontSize = '1.2em';
+                    title.style.padding = '12px';
+
+                    const desc = document.createElement('div');
+                    desc.textContent = article.description || '';
+                    desc.style.color = '#ccc';
+                    desc.style.fontSize = '0.95em';
+                    desc.style.marginBottom = '4px';
+                    desc.style.padding = '12px';
+
+                    const source = document.createElement('div');
+                    source.style.display = 'inline';
+                    source.style.color = '#aaa';
+                    source.style.fontSize = '0.85em';
+                    source.style.padding = '4px 12px 0 12px';
+
+                    // Age formatting
+                    const { display: ageDisplay, tooltip: ageTooltip } = formatAge(article.publishedAt);
+                    source.textContent = article.source && article.source.name ? article.source.name : '';
+
+                    // Age span
+                    const ageSpan = document.createElement('span');
+                    ageSpan.textContent = ageDisplay ? ` - ${ageDisplay}` : '';
+                    ageSpan.title = ageTooltip;
+                    ageSpan.style.color = '#666';
+                    ageSpan.style.marginLeft = '2px';
+
+                    source.appendChild(ageSpan);
+
+                    info.appendChild(title);
+                    info.appendChild(desc);
+                    info.appendChild(source);
+
+                    rowLink.appendChild(img);
+                    rowLink.appendChild(info);
+
+                    container.appendChild(rowLink);
+                });
+
+                newsSection.appendChild(container);
+            }
+
+            // If there's no API key, show message and skip fetch
+            if (!NEWS_API_KEY) {
+                newsSection.innerHTML += '<div style="color:#a00;margin-top:12px;">No NewsAPI.org key set. Please set "newsApiKey" in localStorage.</div>';
+                return;
+            }
+
+            if (useCache) {
+                renderArticles(cached.articles);
+            } else {
+                // Use a CORS proxy to avoid 426/403 errors in browser fetch
+                const proxiedUrl = 'https://corsproxy.io/?' + encodeURIComponent(NEWS_API_URL);
+                fetch(proxiedUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        let storage = {
+                            articles: data.articles || [],
+                            fetchedAt: new Date().toISOString()
+                        };
+                        localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify(storage));
+                        renderArticles(storage.articles);
+                    })
+                    .catch(error => {
+                        newsSection.innerHTML += '<div style="color:#a00;">Error fetching news.</div>';
+                    });
+            }
+        }
+
+        // --- Modal Logic ---
+        function openEditModal(index, site) {
+            showModal({
+                title: 'Edit Favorite',
+                name: site.name,
+                url: site.url,
+                onSave: async (name, url) => {
+                    const sites = loadSites();
+
+                    if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) {
+                        url = 'http://' + url; // Default to http if no scheme
+                    }
+
+                    sites[index].name = name;
+                    sites[index].url = url;
+                    sites[index].favicon = getFaviconUrl(url);
+                    saveSites(sites);
+                    await renderGrid();
+                },
+                onDelete: () => {
+                    const sites = loadSites();
+                    sites.splice(index, 1);
+                    saveSites(sites);
+                    renderGrid();
+                }
+            });
+        }
+
+        function openAddModal() {
+            showModal({
+                title: 'Add Favorite',
+                name: '',
+                url: '',
+                onSave: async (name, url) => {
+                    if (!name) name = url;
+                    const favicon = getFaviconUrl(url);
+                    const sites = loadSites();
+                    sites.push({ name, url, favicon });
+                    saveSites(sites);
+                    await renderGrid();
+                }
+            });
+        }
+
+        function showModal({ title, name, url, onSave, onDelete }) {
+            const modalRoot = document.getElementById('modalRoot');
+            modalRoot.innerHTML = `
+                <div class="modal-bg">
+                    <div class="modal">
+                        <h2 style="margin-top:0;">${title}</h2>
+                        <form id="modalForm">
+                            <label>Site Name</label>
+                            <input type="text" id="modalName" value="${name || ''}" autocomplete="off">
+                            <label>Site URL</label>
+                            <input type="url" id="modalUrl" value="${url || ''}" autocomplete="off" placeholder="https://example.com">
+                            <div class="actions">
+                                ${onDelete ? '<button type="button" id="deleteBtn" style="background:#a00;">Delete</button>' : ''}
+                                <button type="button" id="cancelBtn">Cancel</button>
+                                <button type="submit" id="saveBtn">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            // Focus site name input and select all text
+            setTimeout(() => {
+                const nameInput = document.getElementById('modalName');
+                if (nameInput) {
+                    nameInput.focus();
+                    nameInput.select();
+                }
+            }, 0);
+
+            // Escape key closes modal
+            function escHandler(e) {
+                if (e.key === 'Escape') {
+                    modalRoot.innerHTML = '';
+                    window.removeEventListener('keydown', escHandler);
+                }
+            }
+            window.addEventListener('keydown', escHandler);
+
+            document.getElementById('cancelBtn').onclick = () => {
+                modalRoot.innerHTML = '';
+                window.removeEventListener('keydown', escHandler);
+            };
+            if (onDelete) {
+                document.getElementById('deleteBtn').onclick = () => {
+                    modalRoot.innerHTML = '';
+                    window.removeEventListener('keydown', escHandler);
+                    onDelete();
+                };
+            }
+            // Save on form submit or Save button click
+            const saveHandler = async (e) => {
+                if (e) e.preventDefault();
+                const newName = document.getElementById('modalName').value.trim();
+                let newUrl = document.getElementById('modalUrl').value.trim();
+                if (!newUrl.match(/^https?:\/\/.+/)) {
+                    newUrl = 'http://' + newUrl; // Default to http if no scheme
+                }
+                modalRoot.innerHTML = '';
+                window.removeEventListener('keydown', escHandler);
+                await onSave(newName, newUrl);
+            };
+            document.getElementById('modalForm').onsubmit = saveHandler;
+            document.getElementById('saveBtn').onclick = saveHandler;
+        }
+
+        // --- Add Button ---
+        document.getElementById('addSiteBtn').onclick = openAddModal;
+
+        // --- Initial Render ---
+        renderGrid();
+        renderNews();
+    </script>
+</body>
+</html>
