@@ -290,15 +290,11 @@
             const refreshSvg = document.getElementById('newsRefreshSvg');
             let isFetching = false;
 
-
-
             function setSpinning(spin) {
                 refreshSvg.style.animation = spin
                     ? "spin 1s linear infinite"
                     : "";
             }
-
-
 
             // Add spin animation CSS
             if (!document.getElementById('spin-style')) {
@@ -306,7 +302,7 @@
                 style.id = 'spin-style';
                 style.textContent = `
                     @keyframes spin {
-                        100% { transform: rotate(-360deg); }
+                        100% { transform: rotate(360deg); }
                     }
                 `;
                 document.head.appendChild(style);
@@ -318,12 +314,43 @@
                 fetchAndRenderNews(true);
             };
 
+            function openApiKeyModal() {
+                showModal({
+                    title: 'Set News API Key',
+                    name: '',
+                    url: localStorage.getItem('newsApiKey') || '',
+                    onSave: async (_name, apiKey) => {
+                        localStorage.setItem('newsApiKey', apiKey.trim());
+                        setSpinning(true);
+                        renderNews();
+                    }
+                });
+                // Change label text for API key
+                setTimeout(() => {
+                    const labelEls = document.querySelectorAll('.modal label');
+                    if (labelEls.length > 1) {
+                        labelEls[0].textContent = 'API Key';
+                        labelEls[1].style.display = 'none';
+                        const urlInput = document.getElementById('modalUrl');
+                        if (urlInput) {
+                            urlInput.type = 'text';
+                            urlInput.placeholder = 'Paste your NewsAPI.org key here';
+                        }
+                        const nameInput = document.getElementById('modalName');
+                        if (nameInput) nameInput.style.display = 'none';
+                    }
+                }, 0);
+            }
+
             function fetchAndRenderNews(forceFetch = false) {
                 let cached = null;
                 try {
                     cached = JSON.parse(localStorage.getItem(NEWS_STORAGE_KEY));
                 } catch {}
                 let useCache = false;
+                // Re-read API key in case it was just set
+                const NEWS_API_KEY = localStorage.getItem('newsApiKey') || '';
+                const NEWS_API_URL = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWS_API_KEY}`;
                 if (!forceFetch && cached && cached.fetchedAt) {
                     const ageMs = Date.now() - new Date(cached.fetchedAt).getTime();
                     const twoHours = 2 * 60 * 60 * 1000;
@@ -454,7 +481,27 @@
                 // If there's no API key, show message and skip fetch
                 if (!NEWS_API_KEY) {
                     setSpinning(false);
-                    newsSection.innerHTML += '<div style="color:#a00;margin-top:12px;">No NewsAPI.org key set. Please set "newsApiKey" in localStorage.</div>';
+                    newsSection.innerHTML += `<div style="color:#a00;margin-top:12px;display:flex;flex-direction:column;align-items:center;width:100%;">
+        <button id="addApiKeyBtn" style="display:inline-flex;align-items:center;gap:8px;background:#222;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:1em;cursor:pointer;box-shadow:0 2px 8px #0006;">
+            <span style="display:inline-flex;align-items:center;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="gray" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="8" cy="15" r="3"/>
+                    <path d="M10.6 13L20 4.2M19 5.5l2 2M16.5 7.5l2 2"/>
+                </svg>
+            </span>
+            Click here to add API Key
+        </button>
+        <span style="color:#888;font-size:0.80em;margin-top:8px;text-align:center;display:block;">
+            <a href="https://newsapi.org/register" target="_blank" style="color:#b00;text-decoration:underline;">Sign up for a free API key NewsAPI.org</a>
+        </span>
+    </div>`;
+                    setTimeout(() => {
+                        const btn = document.getElementById('addApiKeyBtn');
+                        if (btn) btn.onclick = (e) => {
+                            e.preventDefault();
+                            openApiKeyModal();
+                        };
+                    }, 0);
                     return;
                 }
 
