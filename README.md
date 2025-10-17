@@ -1,4 +1,4 @@
-== Custom New Tab Page
+## Custom New Tab Page
 
 I don't like the new "New Tab" page in Brave, so I made a new one.
 You can add favorite sites and a free api from NewsAPI.org to show news too.
