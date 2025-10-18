@@ -142,6 +142,63 @@
         .modal button:hover {
             background: #666;
         }
+
+        /* --- New styles for icon selection --- */
+        .icon-choice {
+            position: relative;
+            cursor: pointer;
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 1px 4px #0004;
+            transition: background 0.3s, border 0.3s;
+        }
+        .icon-choice img {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: #222;
+            object-fit: contain;
+        }
+        .icon-choice span {
+            margin-left: 10px;
+            color: #fff;
+        }
+        #iconSelector {
+            margin-bottom: 18px;
+        }
+        #iconSelector div {
+            display: flex;
+            gap: 18px;
+        }
+        #iconSelector label {
+            color: #fff;
+        }
+        #customIconInput {
+            width: 70%;
+            padding: 6px;
+            border-radius: 6px;
+            border: none;
+            background: #333;
+            color: #fff;
+        }
+        #customIconPreview {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: #222;
+            overflow: hidden;
+            line-height: 40px;
+            text-align: center;
+            font-size: 2em;
+            color: #a00;
+        }
+        /* Spin animation for refresh icon */
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -559,11 +616,11 @@
                 title: 'Edit Favorite',
                 name: site.name,
                 url: site.url,
-                onSave: async (name, url) => {
+                onSave: async (name, url, favicon) => {
                     const sites = loadSites();
                     sites[index].name = name;
                     sites[index].url = url;
-                    sites[index].favicon = getFaviconUrl(url);
+                    sites[index].favicon = favicon || getFaviconUrl(url);
                     saveSites(sites);
                     await renderGrid();
                 },
@@ -581,10 +638,10 @@
                 title: 'Add Favorite',
                 name: '',
                 url: '',
-                onSave: async (name, url) => {
+                onSave: async (name, url, favicon) => {
                     url = prependHttpSchemeIfNeeded(url);
                     if (!name) name = url;
-                    const favicon = getFaviconUrl(url);
+                    favicon = favicon || getFaviconUrl(url);
                     const sites = loadSites();
                     sites.push({ name, url, favicon });
                     saveSites(sites);
@@ -595,6 +652,57 @@
 
         function showModal({ title, name, url, onSave, onDelete }) {
             const modalRoot = document.getElementById('modalRoot');
+            // --- Icon selection state ---
+            let currentUrl = url || '';
+            let hostname = '';
+            try { hostname = new URL(currentUrl).hostname; } catch {}
+            let googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
+            let duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
+            let customIconUrl = '';
+            let selectedIconType = 'duck'; // default
+            let selectedCustomUrl = '';
+            let iconError = false;
+
+            function getSelectedFavicon() {
+                if (selectedIconType === 'google') return googleIconUrl;
+                if (selectedIconType === 'duck') return duckIconUrl;
+                if (selectedIconType === 'custom') return selectedCustomUrl;
+                return duckIconUrl;
+            }
+
+            function renderIconSelector() {
+                // Build icon selector HTML
+                return `
+                    <div id="iconSelector" style="margin-bottom:18px;">
+                        <div style="display:flex;gap:18px;">
+                            <div class="icon-choice" id="iconChoiceGoogle" style="position:relative;cursor:pointer;border-radius:10px;padding:8px 12px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${selectedIconType==='google'?'#333':'#222'};border:${selectedIconType==='google'?'2px solid #4af':'2px solid transparent'};">
+                                <img src="${googleIconUrl}" id="iconPreviewGoogle" style="width:40px;height:40px;border-radius:8px;background:#222;object-fit:contain;">
+                                <span style="margin-left:10px;color:#fff;">Google</span>
+                                <span id="checkGoogle" style="position:absolute;top:4px;right:4px;${selectedIconType==='google'?'display:block':'display:none'};color:#4af;font-size:1.3em;">&#10003;</span>
+                            </div>
+                            <div class="icon-choice" id="iconChoiceDuck" style="position:relative;cursor:pointer;border-radius:10px;padding:8px 12px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${selectedIconType==='duck'?'#333':'#222'};border:${selectedIconType==='duck'?'2px solid #4af':'2px solid transparent'};">
+                                <img src="${duckIconUrl}" id="iconPreviewDuck" style="width:40px;height:40px;border-radius:8px;background:#222;object-fit:contain;">
+                                <span style="margin-left:10px;color:#fff;">DuckDuckGo</span>
+                                <span id="checkDuck" style="position:absolute;top:4px;right:4px;${selectedIconType==='duck'?'display:block':'display:none'};color:#4af;font-size:1.3em;">&#10003;</span>
+                            </div>
+                        </div>
+                        <div style="margin-top:16px;">
+                            <label style="color:#fff;">Custom Icon URL</label>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <input type="url" id="customIconInput" value="${selectedCustomUrl||''}" placeholder="https://example.com/icon.png" style="width:70%;padding:6px;border-radius:6px;border:none;background:#333;color:#fff;">
+                                <div id="iconChoiceCustom" style="position:relative;cursor:pointer;border-radius:10px;padding:4px 8px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${selectedIconType==='custom'?'#333':'#222'};border:${selectedIconType==='custom'?'2px solid #4af':'2px solid transparent'};">
+                                    <span id="customIconPreview" style="display:inline-block;width:40px;height:40px;border-radius:8px;background:#222;overflow:hidden;line-height:40px;text-align:center;font-size:2em;color:#a00;">
+                                        ${iconError ? '🚫' : (selectedCustomUrl ? `<img src="${selectedCustomUrl}" style="width:40px;height:40px;object-fit:contain;border-radius:8px;" onerror="this.parentNode.innerHTML='🚫';">` : '')}
+                                    </span>
+                                    <span style="margin-left:10px;color:#fff;">Custom</span>
+                                    <span id="checkCustom" style="position:absolute;top:4px;right:4px;${selectedIconType==='custom'?'display:block':'display:none'};color:#4af;font-size:1.3em;">&#10003;</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
             modalRoot.innerHTML = `
                 <div class="modal-bg">
                     <div class="modal">
@@ -604,6 +712,9 @@
                             <input type="text" id="modalName" value="${name || ''}" autocomplete="off">
                             <label>Site URL</label>
                             <input type="url" id="modalUrl" value="${url || ''}" autocomplete="off" placeholder="https://example.com">
+                            <div id="iconSelectorContainer">
+                                ${renderIconSelector()}
+                            </div>
                             <div class="actions">
                                 ${onDelete ? '<button type="button" id="deleteBtn" style="background:#a00;">Delete</button>' : ''}
                                 <button type="button" id="cancelBtn">Cancel</button>
@@ -613,6 +724,7 @@
                     </div>
                 </div>
             `;
+
             // Focus site name input and select all text
             setTimeout(() => {
                 const nameInput = document.getElementById('modalName');
@@ -621,6 +733,80 @@
                     nameInput.select();
                 }
             }, 0);
+
+            // --- Icon selection logic ---
+            function updateIconUrls() {
+                try {
+                    hostname = new URL(document.getElementById('modalUrl').value.trim()).hostname;
+                } catch { hostname = ''; }
+                googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
+                duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
+            }
+
+            function rerenderIconSelector() {
+                document.getElementById('iconSelectorContainer').innerHTML = renderIconSelector();
+                attachIconSelectorEvents();
+            }
+
+            function attachIconSelectorEvents() {
+                // Google
+                const googleDiv = document.getElementById('iconChoiceGoogle');
+                if (googleDiv) {
+                    googleDiv.onclick = () => {
+                        selectedIconType = 'google';
+                        rerenderIconSelector();
+                    };
+                }
+                // DuckDuckGo
+                const duckDiv = document.getElementById('iconChoiceDuck');
+                if (duckDiv) {
+                    duckDiv.onclick = () => {
+                        selectedIconType = 'duck';
+                        rerenderIconSelector();
+                    };
+                }
+                // Custom
+                const customDiv = document.getElementById('iconChoiceCustom');
+                if (customDiv) {
+                    customDiv.onclick = () => {
+                        selectedIconType = 'custom';
+                        rerenderIconSelector();
+                    };
+                }
+                // Custom input
+                const customInput = document.getElementById('customIconInput');
+                if (customInput) {
+                    customInput.oninput = () => {
+                        selectedCustomUrl = customInput.value.trim();
+                        iconError = false;
+                        if (selectedCustomUrl) {
+                            // Check if image loads
+                            const img = new window.Image();
+                            img.onload = () => {
+                                iconError = false;
+                                rerenderIconSelector();
+                            };
+                            img.onerror = () => {
+                                iconError = true;
+                                rerenderIconSelector();
+                            };
+                            img.src = selectedCustomUrl;
+                        } else {
+                            rerenderIconSelector();
+                        }
+                    };
+                }
+            }
+
+            // Update icons when URL changes
+            document.getElementById('modalUrl').addEventListener('input', () => {
+                updateIconUrls();
+                if (selectedIconType === 'google' || selectedIconType === 'duck') {
+                    rerenderIconSelector();
+                }
+            });
+
+            attachIconSelectorEvents();
 
             // Escape key closes modal
             function escHandler(e) {
@@ -647,9 +833,10 @@
                 if (e) e.preventDefault();
                 const newName = document.getElementById('modalName').value.trim();
                 let newUrl = document.getElementById('modalUrl').value.trim();
+                let favicon = getSelectedFavicon();
                 modalRoot.innerHTML = '';
                 window.removeEventListener('keydown', escHandler);
-                await onSave(newName, newUrl);
+                await onSave(newName, newUrl, favicon);
             };
             document.getElementById('modalForm').onsubmit = saveHandler;
             document.getElementById('saveBtn').onclick = saveHandler;
