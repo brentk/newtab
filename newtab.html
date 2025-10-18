@@ -384,6 +384,7 @@
                     title: 'Set News API Key',
                     name: '',
                     url: localStorage.getItem('newsApiKey') || '',
+                    showIconSelector: false,
                     onSave: async (_name, apiKey) => {
                         localStorage.setItem('newsApiKey', apiKey.trim());
                         setSpinning(true);
@@ -616,6 +617,7 @@
                 title: 'Edit Favorite',
                 name: site.name,
                 url: site.url,
+                showIconSelector: true,
                 onSave: async (name, url, favicon) => {
                     const sites = loadSites();
                     sites[index].name = name;
@@ -638,6 +640,7 @@
                 title: 'Add Favorite',
                 name: '',
                 url: '',
+                showIconSelector: true,
                 onSave: async (name, url, favicon) => {
                     url = prependHttpSchemeIfNeeded(url);
                     if (!name) name = url;
@@ -650,7 +653,7 @@
             });
         }
 
-        function showModal({ title, name, url, onSave, onDelete }) {
+        function showModal({ title, name, url, onSave, onDelete, showIconSelector }) {
             const modalRoot = document.getElementById('modalRoot');
             // --- Icon selection state ---
             let currentUrl = url || '';
@@ -712,9 +715,7 @@
                             <input type="text" id="modalName" value="${name || ''}" autocomplete="off">
                             <label>Site URL</label>
                             <input type="url" id="modalUrl" value="${url || ''}" autocomplete="off" placeholder="https://example.com">
-                            <div id="iconSelectorContainer">
-                                ${renderIconSelector()}
-                            </div>
+                            ${showIconSelector ? `<div id="iconSelectorContainer">${renderIconSelector()}</div>` : ''}
                             <div class="actions">
                                 ${onDelete ? '<button type="button" id="deleteBtn" style="background:#a00;">Delete</button>' : ''}
                                 <button type="button" id="cancelBtn">Cancel</button>
@@ -735,78 +736,80 @@
             }, 0);
 
             // --- Icon selection logic ---
-            function updateIconUrls() {
-                try {
-                    hostname = new URL(document.getElementById('modalUrl').value.trim()).hostname;
-                } catch { hostname = ''; }
-                googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
-                duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
-            }
+            if (showIconSelector) {
+                function updateIconUrls() {
+                    try {
+                        hostname = new URL(document.getElementById('modalUrl').value.trim()).hostname;
+                    } catch { hostname = ''; }
+                    googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
+                    duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
+                }
 
-            function rerenderIconSelector() {
-                document.getElementById('iconSelectorContainer').innerHTML = renderIconSelector();
+                function rerenderIconSelector() {
+                    document.getElementById('iconSelectorContainer').innerHTML = renderIconSelector();
+                    attachIconSelectorEvents();
+                }
+
+                function attachIconSelectorEvents() {
+                    // Google
+                    const googleDiv = document.getElementById('iconChoiceGoogle');
+                    if (googleDiv) {
+                        googleDiv.onclick = () => {
+                            selectedIconType = 'google';
+                            rerenderIconSelector();
+                        };
+                    }
+                    // DuckDuckGo
+                    const duckDiv = document.getElementById('iconChoiceDuck');
+                    if (duckDiv) {
+                        duckDiv.onclick = () => {
+                            selectedIconType = 'duck';
+                            rerenderIconSelector();
+                        };
+                    }
+                    // Custom
+                    const customDiv = document.getElementById('iconChoiceCustom');
+                    if (customDiv) {
+                        customDiv.onclick = () => {
+                            selectedIconType = 'custom';
+                            rerenderIconSelector();
+                        };
+                    }
+                    // Custom input
+                    const customInput = document.getElementById('customIconInput');
+                    if (customInput) {
+                        customInput.oninput = () => {
+                            selectedCustomUrl = customInput.value.trim();
+                            iconError = false;
+                            if (selectedCustomUrl) {
+                                // Check if image loads
+                                const img = new window.Image();
+                                img.onload = () => {
+                                    iconError = false;
+                                    rerenderIconSelector();
+                                };
+                                img.onerror = () => {
+                                    iconError = true;
+                                    rerenderIconSelector();
+                                };
+                                img.src = selectedCustomUrl;
+                            } else {
+                                rerenderIconSelector();
+                            }
+                        };
+                    }
+                }
+
+                // Update icons when URL changes
+                document.getElementById('modalUrl').addEventListener('input', () => {
+                    updateIconUrls();
+                    if (selectedIconType === 'google' || selectedIconType === 'duck') {
+                        rerenderIconSelector();
+                    }
+                });
+
                 attachIconSelectorEvents();
             }
-
-            function attachIconSelectorEvents() {
-                // Google
-                const googleDiv = document.getElementById('iconChoiceGoogle');
-                if (googleDiv) {
-                    googleDiv.onclick = () => {
-                        selectedIconType = 'google';
-                        rerenderIconSelector();
-                    };
-                }
-                // DuckDuckGo
-                const duckDiv = document.getElementById('iconChoiceDuck');
-                if (duckDiv) {
-                    duckDiv.onclick = () => {
-                        selectedIconType = 'duck';
-                        rerenderIconSelector();
-                    };
-                }
-                // Custom
-                const customDiv = document.getElementById('iconChoiceCustom');
-                if (customDiv) {
-                    customDiv.onclick = () => {
-                        selectedIconType = 'custom';
-                        rerenderIconSelector();
-                    };
-                }
-                // Custom input
-                const customInput = document.getElementById('customIconInput');
-                if (customInput) {
-                    customInput.oninput = () => {
-                        selectedCustomUrl = customInput.value.trim();
-                        iconError = false;
-                        if (selectedCustomUrl) {
-                            // Check if image loads
-                            const img = new window.Image();
-                            img.onload = () => {
-                                iconError = false;
-                                rerenderIconSelector();
-                            };
-                            img.onerror = () => {
-                                iconError = true;
-                                rerenderIconSelector();
-                            };
-                            img.src = selectedCustomUrl;
-                        } else {
-                            rerenderIconSelector();
-                        }
-                    };
-                }
-            }
-
-            // Update icons when URL changes
-            document.getElementById('modalUrl').addEventListener('input', () => {
-                updateIconUrls();
-                if (selectedIconType === 'google' || selectedIconType === 'duck') {
-                    rerenderIconSelector();
-                }
-            });
-
-            attachIconSelectorEvents();
 
             // Escape key closes modal
             function escHandler(e) {
@@ -833,13 +836,43 @@
                 if (e) e.preventDefault();
                 const newName = document.getElementById('modalName').value.trim();
                 let newUrl = document.getElementById('modalUrl').value.trim();
-                let favicon = getSelectedFavicon();
+                let favicon = showIconSelector ? getSelectedFavicon() : undefined;
                 modalRoot.innerHTML = '';
                 window.removeEventListener('keydown', escHandler);
                 await onSave(newName, newUrl, favicon);
             };
             document.getElementById('modalForm').onsubmit = saveHandler;
             document.getElementById('saveBtn').onclick = saveHandler;
+        }
+
+        // --- News API Key Modal ---
+        function openApiKeyModal() {
+            showModal({
+                title: 'Set News API Key',
+                name: '',
+                url: localStorage.getItem('newsApiKey') || '',
+                showIconSelector: false,
+                onSave: async (_name, apiKey) => {
+                    localStorage.setItem('newsApiKey', apiKey.trim());
+                    setSpinning(true);
+                    renderNews();
+                }
+            });
+            // Change label text for API key
+            setTimeout(() => {
+                const labelEls = document.querySelectorAll('.modal label');
+                if (labelEls.length > 1) {
+                    labelEls[0].textContent = 'API Key';
+                    labelEls[1].style.display = 'none';
+                    const urlInput = document.getElementById('modalUrl');
+                    if (urlInput) {
+                        urlInput.type = 'text';
+                        urlInput.placeholder = 'Paste your NewsAPI.org key here';
+                    }
+                    const nameInput = document.getElementById('modalName');
+                    if (nameInput) nameInput.style.display = 'none';
+                }
+            }, 0);
         }
 
         // --- Add Button ---
