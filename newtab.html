@@ -216,6 +216,16 @@
         const NEWS_API_KEY      = localStorage.getItem('newsApiKey') || '';
         const NEWS_API_URL      = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWS_API_KEY}`;
 
+        function debounce(func, delay) {
+            let timer;
+            return function(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    func.apply(this, args);
+                }, delay);
+            };
+        }
+
         function loadSites() {
             try {
                 return JSON.parse(localStorage.getItem(SITES_STORAGE_KEY)) || [];
@@ -823,12 +833,12 @@
                 }
 
                 // Update icons when URL changes
-                document.getElementById('modalUrl').addEventListener('input', () => {
-                    updateIconUrls();
-                    if (selectedIconType === 'google' || selectedIconType === 'duck') {
-                        rerenderIconSelector();
-                    }
-                });
+                document.getElementById('modalUrl').addEventListener('input', debounce(() => {
+                        updateIconUrls();
+                        if (selectedIconType === 'google' || selectedIconType === 'duck') {
+                            rerenderIconSelector();
+                        }
+                }, 400));
 
                 attachIconSelectorEvents();
             }
