@@ -684,20 +684,28 @@
             }
 
             function renderIconSelector() {
+                // Helper for fallback preview
+                function iconImgOrUnknown(src, id) {
+                    if (!src) {
+                        return `<span style="width:40px;height:40px;display:inline-block;line-height:40px;text-align:center;font-size:2em;color:#888;" id="${id}Fallback">❔</span>`;
+                    }
+                    return `<img src="${src}" id="${id}" style="width:40px;height:40px;border-radius:8px;background:#222;object-fit:contain;" onerror="this.style.display='none';document.getElementById('${id}Fallback').style.display='inline-block';">
+                            <span style="display:none;width:40px;height:40px;line-height:40px;text-align:center;font-size:2em;color:#888;" id="${id}Fallback">❔</span>`;
+                }
                 // --- Icon selector layout and style ---
                 return `
                     <fieldset id="iconSelectorFieldset" style="margin-bottom:18px;border:2px solid #444;border-radius:16px;padding:18px 18px 18px 18px;position:relative;">
                         <legend style="padding:0 12px;font-size:1.1em;color:#aaa;font-weight:bold;background:#222;left:12px;">Icon</legend>
                         <div style="display:flex;justify-content:center;gap:32px;margin-bottom:18px;">
                             <div class="icon-choice" id="iconChoiceGoogle" style="position:relative;cursor:pointer;border-radius:12px;padding:14px 32px 14px 20px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${selectedIconType==='google'?'#333':'#222'};border:${selectedIconType==='google'?'2.5px solid #4af':'2px solid transparent'};min-width:120px;">
-                                <img src="${googleIconUrl}" id="iconPreviewGoogle" style="width:40px;height:40px;border-radius:8px;background:#222;object-fit:contain;">
+                                ${iconImgOrUnknown(googleIconUrl, "iconPreviewGoogle")}
                                 <span style="margin-left:16px;color:#fff;font-size:1.05em;">Google</span>
                                 <span id="checkGoogle" style="position:absolute;top:6px;right:10px;${selectedIconType==='google'?'display:block':'display:none'};">
                                     <svg width="22" height="22" viewBox="0 0 24 24"><polyline points="5,13 10,18 19,7" style="fill:none;stroke:#1ec94c;stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </span>
                             </div>
                             <div class="icon-choice" id="iconChoiceDuck" style="position:relative;cursor:pointer;border-radius:12px;padding:14px 32px 14px 20px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${selectedIconType==='duck'?'#333':'#222'};border:${selectedIconType==='duck'?'2.5px solid #4af':'2px solid transparent'};min-width:120px;">
-                                <img src="${duckIconUrl}" id="iconPreviewDuck" style="width:40px;height:40px;border-radius:8px;background:#222;object-fit:contain;">
+                                ${iconImgOrUnknown(duckIconUrl, "iconPreviewDuck")}
                                 <span style="margin-left:16px;color:#fff;font-size:1.05em;">DuckDuckGo</span>
                                 <span id="checkDuck" style="position:absolute;top:6px;right:10px;${selectedIconType==='duck'?'display:block':'display:none'};">
                                     <svg width="22" height="22" viewBox="0 0 24 24"><polyline points="5,13 10,18 19,7" style="fill:none;stroke:#1ec94c;stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
