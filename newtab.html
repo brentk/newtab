@@ -142,6 +142,63 @@
         .modal button:hover {
             background: #666;
         }
+
+        /* --- New styles for icon selection --- */
+        .icon-choice {
+            position: relative;
+            cursor: pointer;
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 1px 4px #0004;
+            transition: background 0.3s, border 0.3s;
+        }
+        .icon-choice img {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: #222;
+            object-fit: contain;
+        }
+        .icon-choice span {
+            margin-left: 10px;
+            color: #fff;
+        }
+        #iconSelector {
+            margin-bottom: 18px;
+        }
+        #iconSelector div {
+            display: flex;
+            gap: 18px;
+        }
+        #iconSelector label {
+            color: #fff;
+        }
+        #customIconInput {
+            width: 70%;
+            padding: 6px;
+            border-radius: 6px;
+            border: none;
+            background: #333;
+            color: #fff;
+        }
+        #customIconPreview {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: #222;
+            overflow: hidden;
+            line-height: 40px;
+            text-align: center;
+            font-size: 2em;
+            color: #a00;
+        }
+        /* Spin animation for refresh icon */
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -158,6 +215,16 @@
         const NEWS_STORAGE_KEY  = 'newsArticles';
         const NEWS_API_KEY      = localStorage.getItem('newsApiKey') || '';
         const NEWS_API_URL      = `https://newsapi.org/v2/top-headlines?country=us&apiKey=${NEWS_API_KEY}`;
+
+        function debounce(func, delay) {
+            let timer;
+            return function(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    func.apply(this, args);
+                }, delay);
+            };
+        }
 
         function loadSites() {
             try {
@@ -327,6 +394,7 @@
                     title: 'Set News API Key',
                     name: '',
                     url: localStorage.getItem('newsApiKey') || '',
+                    showIconSelector: false,
                     onSave: async (_name, apiKey) => {
                         localStorage.setItem('newsApiKey', apiKey.trim());
                         setSpinning(true);
@@ -555,15 +623,33 @@
 
         // --- Modal Logic ---
         function openEditModal(index, site) {
+            // Determine which icon type was previously selected
+            let selectedIconType = 'duck';
+            let selectedCustomUrl = '';
+            let hostname = '';
+            try { hostname = new URL(site.url).hostname; } catch {}
+            const googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
+            const duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
+            if (site.favicon === googleIconUrl) {
+                selectedIconType = 'google';
+            } else if (site.favicon === duckIconUrl) {
+                selectedIconType = 'duck';
+            } else if (site.favicon && site.favicon !== '') {
+                selectedIconType = 'custom';
+                selectedCustomUrl = site.favicon;
+            }
             showModal({
                 title: 'Edit Favorite',
                 name: site.name,
                 url: site.url,
-                onSave: async (name, url) => {
+                showIconSelector: true,
+                selectedIconType,
+                selectedCustomUrl,
+                onSave: async (name, url, favicon) => {
                     const sites = loadSites();
                     sites[index].name = name;
                     sites[index].url = url;
-                    sites[index].favicon = getFaviconUrl(url);
+                    sites[index].favicon = favicon || getFaviconUrl(url);
                     saveSites(sites);
                     await renderGrid();
                 },
@@ -577,14 +663,18 @@
         }
 
         function openAddModal() {
+            // For new favorite, nothing is selected
             showModal({
                 title: 'Add Favorite',
                 name: '',
                 url: '',
-                onSave: async (name, url) => {
+                showIconSelector: true,
+                selectedIconType: null,
+                selectedCustomUrl: '',
+                onSave: async (name, url, favicon) => {
                     url = prependHttpSchemeIfNeeded(url);
                     if (!name) name = url;
-                    const favicon = getFaviconUrl(url);
+                    favicon = favicon || getFaviconUrl(url);
                     const sites = loadSites();
                     sites.push({ name, url, favicon });
                     saveSites(sites);
@@ -593,8 +683,72 @@
             });
         }
 
-        function showModal({ title, name, url, onSave, onDelete }) {
+        function showModal({ title, name, url, onSave, onDelete, showIconSelector, selectedIconType, selectedCustomUrl }) {
             const modalRoot = document.getElementById('modalRoot');
+            // --- Icon selection state ---
+            let currentUrl = url || '';
+            let hostname = '';
+            try { hostname = new URL(currentUrl).hostname; } catch {}
+            let googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
+            let duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
+            let customIconUrl = '';
+            let iconError = false;
+
+            // Use passed-in selectedIconType/customUrl if present
+            let _selectedIconType = typeof selectedIconType === 'string' ? selectedIconType : null;
+            let _selectedCustomUrl = typeof selectedCustomUrl === 'string' ? selectedCustomUrl : '';
+
+            function getSelectedFavicon() {
+                if (_selectedIconType === 'google') return googleIconUrl;
+                if (_selectedIconType === 'duck') return duckIconUrl;
+                if (_selectedIconType === 'custom') return _selectedCustomUrl;
+                return '';
+            }
+
+            function renderIconSelector() {
+                // Helper for fallback preview
+                function iconImgOrUnknown(src, id) {
+                    if (!src) {
+                        return `<span style="width:40px;height:40px;display:inline-block;line-height:40px;text-align:center;font-size:2em;color:#888;" id="${id}Fallback">❔</span>`;
+                    }
+                    return `<img src="${src}" id="${id}" style="width:40px;height:40px;border-radius:8px;background:#222;object-fit:contain;" onerror="this.style.display='none';document.getElementById('${id}Fallback').style.display='inline-block';">
+                            <span style="display:none;width:40px;height:40px;line-height:40px;text-align:center;font-size:2em;color:#888;" id="${id}Fallback">❔</span>`;
+                }
+                return `
+                    <fieldset id="iconSelectorFieldset" style="margin-bottom:18px;border:2px solid #444;border-radius:16px;padding:18px 18px 18px 18px;position:relative;">
+                        <legend style="padding:0 12px;font-size:1.1em;color:#aaa;font-weight:bold;background:#222;left:12px;">Icon</legend>
+                        <div style="display:flex;justify-content:center;gap:32px;margin-bottom:18px;">
+                            <div class="icon-choice" id="iconChoiceGoogle" style="position:relative;cursor:pointer;border-radius:12px;padding:14px 32px 14px 20px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${_selectedIconType==='google'?'#333':'#222'};border:${_selectedIconType==='google'?'2.5px solid #4af':'2px solid transparent'};min-width:120px;">
+                                ${iconImgOrUnknown(googleIconUrl, "iconPreviewGoogle")}
+                                <span style="margin-left:16px;color:#fff;font-size:1.05em;">Google</span>
+                                <span id="checkGoogle" style="position:absolute;top:6px;right:10px;${_selectedIconType==='google'?'display:block':'display:none'};">
+                                    <svg width="22" height="22" viewBox="0 0 24 24"><polyline points="5,13 10,18 19,7" style="fill:none;stroke:#1ec94c;stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                            </div>
+                            <div class="icon-choice" id="iconChoiceDuck" style="position:relative;cursor:pointer;border-radius:12px;padding:14px 32px 14px 20px;display:flex;align-items:center;box-shadow:0 1px 4px #0004;background:${_selectedIconType==='duck'?'#333':'#222'};border:${_selectedIconType==='duck'?'2.5px solid #4af':'2px solid transparent'};min-width:120px;">
+                                ${iconImgOrUnknown(duckIconUrl, "iconPreviewDuck")}
+                                <span style="margin-left:16px;color:#fff;font-size:1.05em;">DuckDuckGo</span>
+                                <span id="checkDuck" style="position:absolute;top:6px;right:10px;${_selectedIconType==='duck'?'display:block':'display:none'};">
+                                    <svg width="22" height="22" viewBox="0 0 24 24"><polyline points="5,13 10,18 19,7" style="fill:none;stroke:#1ec94c;stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;">
+                            <label style="color:#fff;font-weight:bold;text-align:center;margin-bottom:6px;font-size:1.05em;">Custom Icon</label>
+                            <input type="url" id="customIconInput" value="${_selectedCustomUrl||''}" placeholder="https://domain.com/icon.ext" style="width:80%;max-width:320px;padding:8px 10px;border-radius:8px;border:none;background:#333;color:#fff;text-align:center;margin-bottom:10px;font-size:1em;">
+                            <div id="iconChoiceCustom" style="position:relative;cursor:pointer;border-radius:12px;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px #0004;background:${_selectedIconType==='custom'?'#333':'#222'};border:${_selectedIconType==='custom'?'2.5px solid #4af':'2px solid transparent'};width:54px;height:54px;margin-bottom:0;">
+                                <span id="customIconPreview" style="display:inline-block;width:40px;height:40px;border-radius:8px;background:#222;overflow:hidden;line-height:40px;text-align:center;font-size:2em;color:#a00;">
+                                    ${iconError ? '🚫' : (_selectedCustomUrl ? `<img src="${_selectedCustomUrl}" style="width:40px;height:40px;object-fit:contain;border-radius:8px;" onerror="this.parentNode.innerHTML='🚫';">` : '')}
+                                </span>
+                                <span id="checkCustom" style="position:absolute;top:2px;right:2px;${_selectedIconType==='custom'?'display:block':'display:none'};">
+                                    <svg width="18" height="18" viewBox="0 0 24 24"><polyline points="5,13 10,18 19,7" style="fill:none;stroke:#1ec94c;stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                            </div>
+                        </div>
+                    </fieldset>
+                `;
+            }
+
             modalRoot.innerHTML = `
                 <div class="modal-bg">
                     <div class="modal">
@@ -604,6 +758,7 @@
                             <input type="text" id="modalName" value="${name || ''}" autocomplete="off">
                             <label>Site URL</label>
                             <input type="url" id="modalUrl" value="${url || ''}" autocomplete="off" placeholder="https://example.com">
+                            ${showIconSelector ? `<div id="iconSelectorContainer">${renderIconSelector()}</div>` : ''}
                             <div class="actions">
                                 ${onDelete ? '<button type="button" id="deleteBtn" style="background:#a00;">Delete</button>' : ''}
                                 <button type="button" id="cancelBtn">Cancel</button>
@@ -613,6 +768,7 @@
                     </div>
                 </div>
             `;
+
             // Focus site name input and select all text
             setTimeout(() => {
                 const nameInput = document.getElementById('modalName');
@@ -621,6 +777,95 @@
                     nameInput.select();
                 }
             }, 0);
+
+            // --- Icon selection logic ---
+            if (showIconSelector) {
+                function updateIconUrls() {
+                    try {
+                        hostname = new URL(document.getElementById('modalUrl').value.trim()).hostname;
+                    } catch { hostname = ''; }
+                    googleIconUrl = hostname ? `http://www.google.com/s2/favicons?domain=${hostname}&sz=64` : '';
+                    duckIconUrl = hostname ? `https://icons.duckduckgo.com/ip3/${hostname}.ico` : '';
+                }
+
+                function rerenderIconSelector() {
+                    // Save focus if custom input is focused
+                    const active = document.activeElement;
+                    const isCustomInput = active && active.id === 'customIconInput';
+                    const caret = isCustomInput ? active.selectionStart : null;
+                    document.getElementById('iconSelectorContainer').innerHTML = renderIconSelector();
+                    attachIconSelectorEvents();
+                    if (isCustomInput) {
+                        const input = document.getElementById('customIconInput');
+                        if (input) {
+                            input.focus();
+                            if (caret !== null) input.setSelectionRange(caret, caret);
+                        }
+                    }
+                }
+
+                function attachIconSelectorEvents() {
+                    // Google
+                    const googleDiv = document.getElementById('iconChoiceGoogle');
+                    if (googleDiv) {
+                        googleDiv.onclick = () => {
+                            _selectedIconType = 'google';
+                            rerenderIconSelector();
+                        };
+                    }
+                    // DuckDuckGo
+                    const duckDiv = document.getElementById('iconChoiceDuck');
+                    if (duckDiv) {
+                        duckDiv.onclick = () => {
+                            _selectedIconType = 'duck';
+                            rerenderIconSelector();
+                        };
+                    }
+                    // Custom
+                    const customDiv = document.getElementById('iconChoiceCustom');
+                    if (customDiv) {
+                        customDiv.onclick = () => {
+                            _selectedIconType = 'custom';
+                            rerenderIconSelector();
+                        };
+                    }
+                    // Custom input
+                    const customInput = document.getElementById('customIconInput');
+                    if (customInput) {
+                        customInput.oninput = (e) => {
+                            const pos = customInput.selectionStart;
+                            _selectedCustomUrl = customInput.value.trim();
+                            iconError = false;
+                            if (_selectedCustomUrl) {
+                                const img = new window.Image();
+                                img.onload = () => {
+                                    iconError = false;
+                                    rerenderIconSelector();
+                                };
+                                img.onerror = () => {
+                                    iconError = true;
+                                    rerenderIconSelector();
+                                };
+                                img.src = _selectedCustomUrl;
+                            } else {
+                                rerenderIconSelector();
+                            }
+                            setTimeout(() => {
+                                customInput.focus();
+                                if (typeof pos === 'number') customInput.setSelectionRange(pos, pos);
+                            }, 0);
+                        };
+                    }
+                }
+
+                // Update icons when URL changes
+                document.getElementById('modalUrl').addEventListener('input', debounce(() => {
+                    updateIconUrls();
+                    rerenderIconSelector(); // Always rerender so icons update as you type
+                }, 400));
+
+                attachIconSelectorEvents();
+            }
 
             // Escape key closes modal
             function escHandler(e) {
@@ -647,12 +892,43 @@
                 if (e) e.preventDefault();
                 const newName = document.getElementById('modalName').value.trim();
                 let newUrl = document.getElementById('modalUrl').value.trim();
+                let favicon = showIconSelector ? getSelectedFavicon() : undefined;
                 modalRoot.innerHTML = '';
                 window.removeEventListener('keydown', escHandler);
-                await onSave(newName, newUrl);
+                await onSave(newName, newUrl, favicon);
             };
             document.getElementById('modalForm').onsubmit = saveHandler;
             document.getElementById('saveBtn').onclick = saveHandler;
+        }
+
+        // --- News API Key Modal ---
+        function openApiKeyModal() {
+            showModal({
+                title: 'Set News API Key',
+                name: '',
+                url: localStorage.getItem('newsApiKey') || '',
+                showIconSelector: false,
+                onSave: async (_name, apiKey) => {
+                    localStorage.setItem('newsApiKey', apiKey.trim());
+                    setSpinning(true);
+                    renderNews();
+                }
+            });
+            // Change label text for API key
+            setTimeout(() => {
+                const labelEls = document.querySelectorAll('.modal label');
+                if (labelEls.length > 1) {
+                    labelEls[0].textContent = 'API Key';
+                    labelEls[1].style.display = 'none';
+                    const urlInput = document.getElementById('modalUrl');
+                    if (urlInput) {
+                        urlInput.type = 'text';
+                        urlInput.placeholder = 'Paste your NewsAPI.org key here';
+                    }
+                    const nameInput = document.getElementById('modalName');
+                    if (nameInput) nameInput.style.display = 'none';
+                }
+            }, 0);
         }
 
         // --- Add Button ---
