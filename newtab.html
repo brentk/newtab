@@ -127,7 +127,7 @@
         }
         .modal .actions {
             display: flex;
-            justify-content: flex-end;
+            justify-content: flex-start;
             gap: 12px;
         }
         .modal button {
@@ -674,10 +674,12 @@
                             <label>Site URL</label>
                             <input type="url" id="modalUrl" value="${url || ''}" autocomplete="off" placeholder="https://example.com">
                             <div id="iconSelectorContainer">${renderIconSelector()}</div>
-                            <div class="actions">
+                            <div class="actions" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                                <div style="display:flex;gap:12px;">
+                                    <button type="submit" id="saveBtn">Save</button>
+                                    <button type="button" id="cancelBtn">Cancel</button>
+                                </div>
                                 ${onDelete ? '<button type="button" id="deleteBtn" style="background:#a00;">Delete</button>' : ''}
-                                <button type="button" id="cancelBtn">Cancel</button>
-                                <button type="submit" id="saveBtn">Save</button>
                             </div>
                         </form>
                     </div>
@@ -814,9 +816,9 @@
                         <form id="apiKeyForm">
                             <label>API Key</label>
                             <input type="text" id="apiKeyInput" value="${apiKey || ''}" autocomplete="off" placeholder="Paste your NewsAPI.org key here">
-                            <div class="actions">
-                                <button type="button" id="cancelBtn">Cancel</button>
+                            <div class="actions" style="display:flex;gap:12px;">
                                 <button type="submit" id="saveBtn">Save</button>
+                                <button type="button" id="cancelBtn">Cancel</button>
                             </div>
                         </form>
                     </div>
