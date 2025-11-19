@@ -359,6 +359,43 @@
             }
         }
 
+        function loadNewsArticles() {
+            try {
+                const cached = JSON.parse(localStorage.getItem(NEWS_STORAGE_KEY));
+                if (cached && Array.isArray(cached.articles)) {
+                    return cached.articles;
+                }
+            } catch {}
+            return [];
+        }
+
+        function saveNewsArticles(articles) {
+
+            if (!Array.isArray(articles)) return [];
+            articles = articles.map(article => {
+
+                let titleTokens = (article.title || '').split('-');
+                titleTokens.pop();
+                const title = titleTokens.join('-').trim();
+
+                return {
+                    url: article.url || '',
+                    image: article.urlToImage || '',
+                    title: title,
+                    preview: article.description || '',
+                    source: (article.source && article.source.name) ? article.source.name : '',
+                    published: article.publishedAt || ''
+                }
+            });
+
+            localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify({
+                articles,
+                fetchedAt: new Date().toISOString()
+            }));
+
+            return articles;
+        }
+
         function renderNews() {
             const newsSection = document.getElementById('newsSection');
             // Add refresh icon and gear icon after "Top News"
@@ -430,7 +467,7 @@
                     container.style.marginRight = 'auto';
 
                     function formatAge(publishedAt) {
-                        if (!publishedAt) return '';
+                        if (!publishedAt) return { display: '', tooltip: '' };
                         const pubDate = new Date(publishedAt);
                         const now = new Date();
                         const diffMs = now - pubDate;
@@ -472,8 +509,9 @@
                         rowLink.style.boxShadow = '0 2px 8px #0006';
                         rowLink.style.textDecoration = 'none';
 
+                        // Image
                         const img = document.createElement('img');
-                        img.src = article.urlToImage || '';
+                        img.src = article.image || '';
                         img.style.width = '256px';
                         img.style.objectFit = 'cover';
                         img.style.borderRadius = '8px';
@@ -481,35 +519,37 @@
                         img.style.margin = 'auto';
                         img.onerror = () => { img.style.display = 'none'; };
 
+                        // Info
                         const info = document.createElement('div');
                         info.style.display = 'flex';
                         info.style.flexDirection = 'column';
                         info.style.justifyContent = 'flex-start';
                         info.style.flex = '1';
 
+                        // Title
                         const title = document.createElement('div');
-                        let titleTokens = (article.title || '').split('-');
-                        titleTokens.pop();
-                        title.textContent = titleTokens.join('-').trim();
+                        title.textContent = article.title || '';
                         title.style.color = '#fff';
                         title.style.fontSize = '1.2em';
                         title.style.padding = '12px';
 
+                        // Body
                         const desc = document.createElement('div');
-                        desc.textContent = article.description || '';
+                        desc.textContent = article.preview || '';
                         desc.style.color = '#ccc';
                         desc.style.fontSize = '0.95em';
                         desc.style.marginBottom = '4px';
                         desc.style.padding = '12px';
 
+                        // Source and Age
                         const source = document.createElement('div');
                         source.style.display = 'inline';
                         source.style.color = '#aaa';
                         source.style.fontSize = '0.85em';
                         source.style.padding = '4px 12px 0 12px';
 
-                        const { display: ageDisplay, tooltip: ageTooltip } = formatAge(article.publishedAt);
-                        source.textContent = article.source && article.source.name ? article.source.name : '';
+                        const { display: ageDisplay, tooltip: ageTooltip } = formatAge(article.published);
+                        source.textContent = article.source || '';
 
                         const ageSpan = document.createElement('span');
                         ageSpan.textContent = ageDisplay ? ` - ${ageDisplay}` : '';
@@ -567,8 +607,13 @@
                     return;
                 }
 
+                let newsResolve;
+                let newsPromise = new Promise(resolve => {
+                    newsResolve = resolve;
+                });
+
                 if (useCache) {
-                    renderArticles(cached.articles);
+                    newsResolve(cached.articles);
                 } else {
                     setSpinning(true);
                     const proxiedUrl = 'https://corsproxy.io/?' + encodeURIComponent(NEWS_API_URL);
@@ -586,18 +631,18 @@
                                 showApiKeyUi(data.message);
                                 return;
                             }
-                            let storage = {
-                                articles: data.articles || [],
-                                fetchedAt: new Date().toISOString()
-                            };
-                            localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify(storage));
-                            renderArticles(storage.articles);
+                            const normalized = saveNewsArticles(data.articles || []);
+                            newsResolve(normalized);
                         })
                         .catch(error => {
                             setSpinning(false);
                             newsSection.innerHTML += '<div style="color:#a00;">Error fetching news.</div>';
                         });
                 }
+
+                newsPromise.then(articles => {
+                    renderArticles(articles);
+                });
             }
 
             fetchAndRenderNews();
